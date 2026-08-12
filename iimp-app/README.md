@@ -1,36 +1,120 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IIMP — Intelligent Incident Management Platform
 
-## Getting Started
+A Next.js frontend for managing and analyzing engineering incidents.
 
-First, run the development server:
+---
+
+## Branch: `feature/incident-form-detail`
+
+> **No backend required.** This branch runs entirely on mock/local data. All data operations are wired through `src/services/incidentsService.ts` with simulated latency — no network calls are made.
+
+---
+
+## Requirements
+
+| Tool | Version |
+|------|---------|
+| Node.js | **v18 or higher** |
+| npm | Comes bundled with Node.js |
+| Git | Any recent version |
+
+Download Node.js from [nodejs.org](https://nodejs.org) if you don't have it.  
+Verify your version: `node --version`
+
+---
+
+## Setup
 
 ```bash
+# 1. Clone the repo
+git clone <repo-url>
+cd Intelligent-Incident-Management-Platform
+
+# 2. Check out this feature branch
+git checkout feature/incident-form-detail
+
+# 3. Install dependencies
+cd iimp-app
+npm install
+
+# 4. Start the development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## What's in this branch
 
-## Learn More
+### Incident Dashboard (`/`)
+- Lists all incidents with severity/status filters and sort-by-severity toggle
+- Live incident count summary in the header (total, open, critical)
+- Click any row or incident ID to navigate to the detail page
 
-To learn more about Next.js, take a look at the following resources:
+### New Incident Form
+- Click **New Incident** in the header to open a modal
+- Fields: title, service, severity, status, description, and raw logs
+- Simulates a 400ms loading state on submit
+- ~10% chance of a simulated error to test the error state (just retry)
+- On success the new incident appears in the table immediately
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Incident Detail (`/incidents/[id]`)
+- Full incident details: title, service, severity, status, description, created timestamp
+- Logs displayed in a scrollable monospace block
+- **Analyze Incident** button runs a mock AI analysis (~1.8s delay) and renders:
+  - Summary, probable severity badge, key error patterns list, confidence progress bar
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Mock data & service layer
+All data functions live in `src/services/incidentsService.ts`:
+- `getIncidents()` — returns the incident list
+- `getIncidentById(id)` — returns a single incident
+- `createIncident(payload)` — generates id + created_at locally, prepends to list
+- `analyzeIncident(id)` — returns a mock analysis result
 
-## Deploy on Vercel
+Swapping to a real API later only requires changing the internals of these four functions — no component code changes needed.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project structure
+
+```
+src/
+  app/
+    page.tsx                  # Dashboard
+    layout.tsx                # Root layout (wraps IncidentsProvider)
+    incidents/[id]/page.tsx   # Detail page
+    globals.css
+  components/
+    SeverityBadge.tsx
+    StatusBadge.tsx
+    CreateIncidentModal.tsx   # New incident form modal
+  context/
+    IncidentsContext.tsx      # Shared incidents state across pages
+  data/
+    seedIncidents.ts          # Mock seed data (3 realistic incidents)
+  services/
+    incidentsService.ts       # All data operations (mock now, real API later)
+  types/
+    incident.ts               # Incident, Severity, Status types
+```
+
+---
+
+## Available scripts
+
+```bash
+npm run dev     # Start development server on localhost:3000
+npm run build   # Production build
+npm run start   # Start production server (requires build first)
+npm run lint    # Run ESLint
+```
+
+---
+
+## Tech stack
+
+- [Next.js 16](https://nextjs.org) (App Router)
+- [React 19](https://react.dev)
+- [TypeScript 5](https://www.typescriptlang.org)
+- [Tailwind CSS 4](https://tailwindcss.com)
