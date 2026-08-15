@@ -195,15 +195,15 @@ export default function DashboardPage() {
                   >
                     <td className="whitespace-nowrap px-5 py-3.5">
                       <Link
-                        href={`/incidents/${incident.id}`}
+                        href={`/incidents/${incident.incident_id ?? incident.id}`}
                         className="font-mono text-xs font-semibold text-indigo-600 hover:text-indigo-800 group-hover:underline"
                       >
-                        {incident.id}
+                        {incident.incident_id ?? incident.id}
                       </Link>
                     </td>
                     <td className="px-5 py-3.5 max-w-xs">
                       <Link
-                        href={`/incidents/${incident.id}`}
+                        href={`/incidents/${incident.incident_id ?? incident.id}`}
                         className="block text-sm font-medium text-slate-800 hover:text-indigo-600 truncate"
                         title={incident.title}
                       >

@@ -3,11 +3,7 @@
 /**
  * IncidentsContext
  *
- * Provides a shared incidents list across the app so that a newly created
- * incident on the dashboard is immediately visible without a full page reload.
- *
- * When the real API is ready, replace the `getIncidents()` call here and the
- * `createIncident()` call in the form — the context shape stays the same.
+ * Provides the shared incidents list across the application.
  */
 
 import {
@@ -17,35 +13,78 @@ import {
   useEffect,
   useState,
 } from "react";
+
 import { Incident } from "@/types/incident";
 import { getIncidents } from "@/services/incidentsService";
 
 interface IncidentsContextValue {
   incidents: Incident[];
   loading: boolean;
-  /** Call this after a successful createIncident() to prepend the new incident */
   addIncident: (incident: Incident) => void;
 }
 
-const IncidentsContext = createContext<IncidentsContextValue | null>(null);
+const IncidentsContext =
+  createContext<IncidentsContextValue | null>(null);
 
-export function IncidentsProvider({ children }: { children: React.ReactNode }) {
+export function IncidentsProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getIncidents().then((data) => {
-      setIncidents(data);
-      setLoading(false);
-    });
+    let mounted = true;
+
+    async function loadIncidents() {
+      try {
+        const data = await getIncidents();
+
+        if (mounted) {
+          setIncidents(data);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load incidents:",
+          error
+        );
+
+        if (mounted) {
+          setIncidents([]);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadIncidents();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const addIncident = useCallback((incident: Incident) => {
-    setIncidents((prev) => [incident, ...prev]);
-  }, []);
+  const addIncident = useCallback(
+    (incident: Incident) => {
+      setIncidents((prev) => [
+        incident,
+        ...prev,
+      ]);
+    },
+    []
+  );
 
   return (
-    <IncidentsContext.Provider value={{ incidents, loading, addIncident }}>
+    <IncidentsContext.Provider
+      value={{
+        incidents,
+        loading,
+        addIncident,
+      }}
+    >
       {children}
     </IncidentsContext.Provider>
   );
@@ -53,6 +92,12 @@ export function IncidentsProvider({ children }: { children: React.ReactNode }) {
 
 export function useIncidents(): IncidentsContextValue {
   const ctx = useContext(IncidentsContext);
-  if (!ctx) throw new Error("useIncidents must be used inside <IncidentsProvider>");
+
+  if (!ctx) {
+    throw new Error(
+      "useIncidents must be used inside <IncidentsProvider>"
+    );
+  }
+
   return ctx;
 }

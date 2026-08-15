@@ -1,5 +1,21 @@
 import json
-from log_analysis_agent import analyze_incident_logs
+
+from log_analysis_agent import analyze_incident_logs, normalize_analysis_result
+
+
+def test_normalize_analysis_result_handles_case_and_confidence_percentages():
+    raw = {
+        "summary": "The service is failing.",
+        "probable_severity": "Medium",
+        "key_error_patterns": ["Error rate elevated"],
+        "confidence": 55,
+    }
+
+    normalized = normalize_analysis_result(raw)
+
+    assert normalized["probable_severity"] == "MEDIUM"
+    assert normalized["confidence"] == 0.55
+
 
 logs_1001 = """2026-08-12 10:41:12.421 INFO  [payment-api] Incoming POST /api/v1/payments
 2026-08-12 10:41:12.438 INFO  [payment-api] Processing payment request payment_id=PAY-78231

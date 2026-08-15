@@ -1,3 +1,17 @@
+# ---------------------------------------------------------------------------
+# Load .env FIRST — before any other import.
+# ai/log_analysis_agent.py executes os.environ["GEMINI_API_KEY"] at module
+# level when it is first imported, so the env must be populated before any
+# import chain reaches that module.
+# ---------------------------------------------------------------------------
+import os
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+# ---------------------------------------------------------------------------
+# All application imports come after the env is loaded.
+# ---------------------------------------------------------------------------
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
