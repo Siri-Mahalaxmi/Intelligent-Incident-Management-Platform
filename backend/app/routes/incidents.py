@@ -10,7 +10,7 @@ from typing import List
 from fastapi import APIRouter
 
 from app.models.incident import IncidentDetail, IncidentSummary
-from app.services.incident_service import get_all_incidents, get_incident_by_id
+from app.services.incident_service import create_incident, get_all_incidents, get_incident_by_id
 
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
 
@@ -19,6 +19,12 @@ router = APIRouter(prefix="/incidents", tags=["Incidents"])
 def list_incidents():
     """Return all incidents ordered by creation date (newest first)."""
     return get_all_incidents()
+
+
+@router.post("", response_model=IncidentDetail)
+def create_incident_route(payload: dict):
+    """Create a new incident and return it."""
+    return create_incident(payload)
 
 
 @router.get("/{incident_id}", response_model=IncidentDetail)

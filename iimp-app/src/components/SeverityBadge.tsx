@@ -31,7 +31,7 @@ const severityConfig: Record<
 };
 
 interface SeverityBadgeProps {
-  severity: Severity;
+  severity: Severity | string;
   size?: "sm" | "md";
 }
 
@@ -39,7 +39,11 @@ export default function SeverityBadge({
   severity,
   size = "sm",
 }: SeverityBadgeProps) {
-  const config = severityConfig[severity];
+  // Normalize to uppercase so values like "high" or "High" work correctly.
+  // Fall back to MEDIUM if the value is missing or not recognised.
+  const normalizedSeverity = String(severity ?? "MEDIUM").trim().toUpperCase() as Severity;
+  const config = severityConfig[normalizedSeverity] ?? severityConfig.MEDIUM;
+
   const padding = size === "md" ? "px-3 py-1 text-sm" : "px-2.5 py-0.5 text-xs";
   return (
     <span
