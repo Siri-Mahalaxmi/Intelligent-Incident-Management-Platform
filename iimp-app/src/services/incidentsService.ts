@@ -9,6 +9,9 @@ import {
   Severity,
   Status,
   AnalysisResult,
+  SimilarIncidentsResponse,
+  RCAResult,
+  ReportResult,
 } from "@/types/incident";
 
 const API_BASE_URL =
@@ -154,4 +157,58 @@ export async function analyzeIncident(
   );
 
   return normalizeAnalysisResult(result);
+}
+
+// ---------------------------------------------------------------------------
+// Similar incidents
+// ---------------------------------------------------------------------------
+
+export async function getSimilarIncidents(
+  id: string,
+  threshold = 0.5,
+  limit = 3
+): Promise<SimilarIncidentsResponse> {
+  return apiRequest<SimilarIncidentsResponse>(
+    `/incidents/${encodeURIComponent(id)}/similar?threshold=${threshold}&limit=${limit}`,
+    { method: "POST" }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Run multi-agent RCA pipeline
+// ---------------------------------------------------------------------------
+
+export async function runRCA(id: string): Promise<RCAResult> {
+  return apiRequest<RCAResult>(
+    `/incidents/${encodeURIComponent(id)}/rca`,
+    { method: "POST" }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Generate post-mortem report
+// ---------------------------------------------------------------------------
+
+export async function generateReport(id: string): Promise<ReportResult> {
+  return apiRequest<ReportResult>(
+    `/incidents/${encodeURIComponent(id)}/report`,
+    { method: "POST" }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Update incident status
+// ---------------------------------------------------------------------------
+
+export async function updateIncidentStatus(
+  id: string,
+  status: Status
+): Promise<Incident> {
+  return apiRequest<Incident>(
+    `/incidents/${encodeURIComponent(id)}/status`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }
+  );
 }

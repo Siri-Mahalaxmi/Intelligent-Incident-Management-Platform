@@ -1,10 +1,17 @@
 """
-seed.py — Insert the 3 demo incidents into Supabase.
+seed.py — Insert the 5 demo incidents into Supabase.
 
 Run from the backend/ directory with the venv active:
     python seed.py
 
 Safe to run multiple times — skips any incident whose incident_id already exists.
+
+Incidents:
+  INC-1001  Payment API - Increased Failures and Latency          (HIGH,     OPEN)
+  INC-1002  Checkout Service - High Latency and Request Timeouts  (CRITICAL, OPEN)
+  INC-1003  Auth Service - Sudden 500 Errors                      (HIGH,     OPEN)
+  INC-1004  Payment API - DB Pool Exhausted Under Flash Sale      (CRITICAL, RESOLVED) — RAG corpus
+  INC-1005  Auth Service - Missing Env Var After Deployment       (HIGH,     RESOLVED) — RAG corpus
 """
 
 import os
@@ -12,7 +19,6 @@ import sys
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
-# Load .env before importing anything that reads env vars
 load_dotenv()
 
 from supabase import create_client
@@ -33,17 +39,18 @@ client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 now = datetime.now(timezone.utc)
 
 INCIDENTS = [
+    # -------------------------------------------------------------------------
+    # INC-1001 — primary demo incident
+    # -------------------------------------------------------------------------
     {
         "incident_id": "INC-1001",
-        "title": "Payment API Database Connection Pool Exhausted",
+        "title": "Payment API - Increased Failures and Latency",
         "service": "Payment API",
-        "severity": "CRITICAL",
+        "severity": "HIGH",
         "status": "OPEN",
         "description": (
-            "The Payment API began throwing HTTP 500 errors after its database "
-            "connection pool reached maximum capacity. Payments are failing for all "
-            "users. Connection wait times spiked from 120 ms to over 2400 ms before "
-            "the pool was fully exhausted."
+            "Payment requests are experiencing increased latency and intermittent "
+            "failures. Multiple users are unable to complete payments successfully."
         ),
         "logs": """\
 2026-08-12 10:41:12.421 INFO  [payment-api] Incoming POST /api/v1/payments
@@ -60,19 +67,21 @@ INCIDENTS = [
 2026-08-12 10:41:26.104 ERROR [payment-api] Database connection timeout
 2026-08-12 10:41:27.442 ERROR [payment-api] Database connection timeout
 2026-08-12 10:41:31.902 WARN  [payment-api] Connection utilization reached maximum capacity""",
-        "created_at": (now - timedelta(hours=3)).isoformat(),
+        "created_at": "2026-08-12T10:41:12Z",
     },
+
+    # -------------------------------------------------------------------------
+    # INC-1002 — primary demo incident
+    # -------------------------------------------------------------------------
     {
         "incident_id": "INC-1002",
-        "title": "Checkout Service Cascading Timeout — Inventory Service Degraded",
+        "title": "Checkout Service - High Latency and Request Timeouts",
         "service": "Checkout Service",
-        "severity": "HIGH",
-        "status": "IN_PROGRESS",
+        "severity": "CRITICAL",
+        "status": "OPEN",
         "description": (
-            "The Checkout Service is returning HTTP 504 Gateway Timeout errors "
-            "due to cascading failures from a degraded Inventory Service. Thread "
-            "pool utilization has reached 92 % and the retry queue has grown to "
-            "over 400 items. Checkout latency has increased to an average of 8.7 seconds."
+            "Checkout requests are taking significantly longer than normal and "
+            "several requests are failing with gateway timeout errors."
         ),
         "logs": """\
 2026-08-12 11:15:02.101 INFO  [checkout-service] Incoming POST /api/v1/checkout
@@ -93,28 +102,104 @@ INCIDENTS = [
 2026-08-12 11:15:15.004 WARN  [checkout-service] Average checkout latency: 8.7 seconds
 2026-08-12 11:15:18.771 ERROR [checkout-service] Multiple requests waiting for Inventory Service
 2026-08-12 11:15:21.443 ERROR [checkout-service] HTTP 504 Gateway Timeout""",
-        "created_at": (now - timedelta(hours=2)).isoformat(),
+        "created_at": "2026-08-12T11:15:02Z",
     },
+
+    # -------------------------------------------------------------------------
+    # INC-1003 — primary demo incident
+    # -------------------------------------------------------------------------
     {
         "incident_id": "INC-1003",
-        "title": "Auth Service Down After Deployment — Missing JWT_SECRET",
+        "title": "Auth Service - Sudden 500 Errors",
         "service": "Auth Service",
-        "severity": "CRITICAL",
-        "status": "RESOLVED",
+        "severity": "HIGH",
+        "status": "OPEN",
         "description": (
-            "A deployment of the Auth Service failed to include the JWT_SECRET "
-            "environment variable. The service started throwing NullPointerExceptions "
-            "on every authentication attempt, causing the error rate to spike from "
-            "0.2 % to 38.7 %. All login and token-refresh requests are failing."
+            "Authentication requests started failing with HTTP 500 errors. "
+            "The issue appeared shortly after a new application version was deployed."
         ),
         "logs": """\
 2026-08-12 13:25:30.001 INFO  [deployment] Deployment started
 2026-08-12 13:25:30.102 INFO  [deployment] Service: auth-service
+2026-08-12 13:25:30.103 INFO  [deployment] Previous version: v2.7.4
+2026-08-12 13:25:30.104 INFO  [deployment] New version: v2.8.0
+2026-08-12 13:27:00.001 INFO  [deployment] Deployment completed successfully
+2026-08-12 13:27:01.001 INFO  [auth-service] Starting application
+2026-08-12 13:27:01.442 INFO  [auth-service] Application version: v2.8.0
+2026-08-12 13:27:03.201 INFO  [auth-service] Loading application configuration
 2026-08-12 13:27:03.422 ERROR [auth-service] Missing required configuration property: JWT_SECRET
+2026-08-12 13:27:03.423 WARN  [auth-service] JWT configuration could not be initialized
+2026-08-12 13:27:05.102 INFO  [auth-service] Application started successfully
+2026-08-12 13:27:08.441 INFO  [auth-service] Incoming POST /api/v1/login
+2026-08-12 13:27:08.442 ERROR [auth-service] Authentication module initialization failed
 2026-08-12 13:27:08.442 ERROR [auth-service] NullPointerException: JWT secret is null
 2026-08-12 13:27:08.443 ERROR [auth-service] HTTP 500 Internal Server Error
-2026-08-12 13:27:15.001 WARN  [auth-service] Error rate increased from 0.2% to 38.7%""",
-        "created_at": (now - timedelta(hours=1)).isoformat(),
+2026-08-12 13:27:09.112 ERROR [auth-service] Authentication request failed
+2026-08-12 13:27:09.113 ERROR [auth-service] HTTP 500 Internal Server Error
+2026-08-12 13:27:15.001 WARN  [auth-service] Error rate increased from 0.2% to 38.7%
+2026-08-12 13:27:18.220 ERROR [auth-service] Failed to initialize JWT provider
+2026-08-12 13:27:20.002 ERROR [auth-service] HTTP 500 Internal Server Error""",
+        "created_at": "2026-08-12T13:27:08Z",
+    },
+
+    # -------------------------------------------------------------------------
+    # INC-1004 — resolved historical variant (RAG similarity search corpus)
+    # Similar failure class to INC-1001 (Payment API / DB connection exhaustion)
+    # -------------------------------------------------------------------------
+    {
+        "incident_id": "INC-1004",
+        "title": "Payment API - Database Connection Pool Exhausted Under Flash Sale",
+        "service": "Payment API",
+        "severity": "CRITICAL",
+        "status": "RESOLVED",
+        "description": (
+            "A scheduled flash sale generated 18x normal traffic. The connection "
+            "pool was sized for normal peak traffic and exhausted within 90 seconds, "
+            "causing HTTP 503 errors for 62% of payment requests. Resolved by "
+            "emergency pool size increase via config."
+        ),
+        "logs": """\
+2026-05-20 18:00:00.001 INFO  [payment-api] Flash sale event started
+2026-05-20 18:00:14.332 WARN  [payment-api] Request rate: 4200 req/min (normal: 230 req/min)
+2026-05-20 18:00:41.881 WARN  [payment-api] Active database connections: 91/100
+2026-05-20 18:01:12.002 ERROR [payment-api] SQLTransientConnectionException: Timeout 30000ms
+2026-05-20 18:01:12.003 ERROR [payment-api] HTTP 503 Service Unavailable
+2026-05-20 18:01:30.441 ERROR [payment-api] Connection pool exhausted — 100/100 active
+2026-05-20 18:02:04.003 WARN  [payment-api] Queue depth: 812 requests waiting
+2026-05-20 18:04:11.220 INFO  [payment-api] Pool size increased to 250 via hot config reload
+2026-05-20 18:04:45.001 INFO  [payment-api] Connection availability restored
+2026-05-20 18:06:00.002 INFO  [payment-api] Error rate < 1% — incident resolved""",
+        "created_at": (now - timedelta(days=85)).isoformat(),
+    },
+
+    # -------------------------------------------------------------------------
+    # INC-1005 — resolved historical variant (RAG similarity search corpus)
+    # Similar failure class to INC-1003 (Auth Service / missing env var)
+    # -------------------------------------------------------------------------
+    {
+        "incident_id": "INC-1005",
+        "title": "Auth Service - Missing Environment Variable After Deployment",
+        "service": "Auth Service",
+        "severity": "HIGH",
+        "status": "RESOLVED",
+        "description": (
+            "A secrets rotation process updated credentials in Vault but did not "
+            "trigger a redeployment of the Auth Service. On the next rolling restart "
+            "the service failed to initialise, causing all login requests to fail "
+            "with NullPointerExceptions. Resolved by redeploying with updated secrets."
+        ),
+        "logs": """\
+2026-07-03 08:01:00.001 INFO  [deployment] Rolling update started — auth-service v3.2.0
+2026-07-03 08:01:44.332 INFO  [auth-service] Initialising configuration
+2026-07-03 08:01:44.881 ERROR [auth-service] Missing required environment variable: SESSION_SECRET
+2026-07-03 08:01:44.882 ERROR [auth-service] NullPointerException: Session secret is null
+2026-07-03 08:01:44.883 ERROR [auth-service] Failed to initialise auth module
+2026-07-03 08:01:45.002 ERROR [auth-service] Service startup failed — exiting
+2026-07-03 08:03:01.220 WARN  [deployment] Pod restart loop detected — CrashLoopBackOff
+2026-07-03 08:15:00.001 INFO  [deployment] Secret SESSION_SECRET injected from updated Vault path
+2026-07-03 08:15:14.441 INFO  [auth-service] Auth module initialised successfully
+2026-07-03 08:15:15.002 INFO  [auth-service] Service healthy — login requests resuming""",
+        "created_at": (now - timedelta(days=46)).isoformat(),
     },
 ]
 

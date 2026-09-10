@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from postgrest.exceptions import APIError
 
 from app.database import supabase_client
-from app.models.incident import IncidentDetail, IncidentSummary
+from app.models.incident import IncidentDetailFull, IncidentSummary
 
 # Columns returned for the list endpoint (keeps payload small)
 _LIST_COLUMNS = "id, incident_id, title, service, severity, status, created_at"
@@ -19,7 +19,7 @@ _LIST_COLUMNS = "id, incident_id, title, service, severity, status, created_at"
 # All columns for the detail endpoint
 _DETAIL_COLUMNS = (
     "id, incident_id, title, service, severity, status, "
-    "description, logs, created_at, ai_summary"
+    "description, logs, created_at, ai_summary, rca_result, report_result"
 )
 
 
@@ -34,7 +34,7 @@ def get_all_incidents() -> List[IncidentSummary]:
     return [IncidentSummary(**row) for row in response.data]
 
 
-def get_incident_by_id(incident_id: str) -> IncidentDetail:
+def get_incident_by_id(incident_id: str) -> IncidentDetailFull:
     """
     Fetch a single incident by its human-readable ID (e.g. 'INC-1001').
     Raises 404 if not found.
@@ -59,7 +59,7 @@ def get_incident_by_id(incident_id: str) -> IncidentDetail:
         raise HTTPException(
             status_code=404, detail=f"Incident '{incident_id}' not found."
         )
-    return IncidentDetail(**response.data)
+    return IncidentDetailFull(**response.data)
 
 
 def _next_incident_id() -> str:
@@ -83,7 +83,7 @@ def _next_incident_id() -> str:
     return f"INC-{max_num + 1}"
 
 
-def create_incident(payload: dict) -> IncidentDetail:
+def create_incident(payload: dict) -> IncidentDetailFull:
     """Create a new incident row in Supabase and return it."""
     incident_id = _next_incident_id()
     created_at = datetime.now(timezone.utc).isoformat()
@@ -114,3 +114,44 @@ def update_ai_summary(incident_id: str, summary: dict) -> None:
     supabase_client.table("incidents").update({"ai_summary": summary}).eq(
         "incident_id", incident_id
     ).execute()
+
+
+def update_report_result(incident_id: str, report: dict) -> None:
+    """
+    Write the Report Agent result back to the report_result column.
+    Called after a successful report generation so results are persisted.
+    """
+    supabase_client.table("incidents").update({"report_result": report}).eq(
+        "incident_id", incident_id
+    ).execute()
+
+
+def update_status(incident_id: str, status: str) -> IncidentSummary:
+    """
+    Update the status of an incident. Returns the updated summary row.
+    Raises 404 if the incident does not exist.
+    Raises 422 if the status value is invalid.
+    """
+    valid = {"OPEN", "IN_PROGRESS", "RESOLVED"}
+    if status not in valid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid status '{status}'. Must be one of: {sorted(valid)}",
+        )
+
+    # Confirm the incident exists first
+    get_incident_by_id(incident_id)
+
+    supabase_client.table("incidents").update({"status": status}).eq(
+        "incident_id", incident_id
+    ).execute()
+
+    # Re-fetch and return the updated summary
+    response = (
+        supabase_client.table("incidents")
+        .select(_LIST_COLUMNS)
+        .eq("incident_id", incident_id)
+        .single()
+        .execute()
+    )
+    return IncidentSummary(**response.data)

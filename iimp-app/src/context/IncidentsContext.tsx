@@ -21,6 +21,7 @@ interface IncidentsContextValue {
   incidents: Incident[];
   loading: boolean;
   addIncident: (incident: Incident) => void;
+  updateIncident: (incident: Incident) => void;
 }
 
 const IncidentsContext =
@@ -69,10 +70,20 @@ export function IncidentsProvider({
 
   const addIncident = useCallback(
     (incident: Incident) => {
-      setIncidents((prev) => [
-        incident,
-        ...prev,
-      ]);
+      setIncidents((prev) => [incident, ...prev]);
+    },
+    []
+  );
+
+  const updateIncident = useCallback(
+    (incident: Incident) => {
+      setIncidents((prev) =>
+        prev.map((i) =>
+          (i.incident_id ?? i.id) === (incident.incident_id ?? incident.id)
+            ? { ...i, ...incident }
+            : i
+        )
+      );
     },
     []
   );
@@ -83,6 +94,7 @@ export function IncidentsProvider({
         incidents,
         loading,
         addIncident,
+        updateIncident,
       }}
     >
       {children}

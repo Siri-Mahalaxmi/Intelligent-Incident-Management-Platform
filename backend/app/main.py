@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import analysis, incidents
+from app.routes import analysis, incidents, similarity, rca, report
 
 app = FastAPI(
     title="Intelligent Incident Management Platform",
@@ -45,6 +45,47 @@ app.add_middleware(
 
 app.include_router(incidents.router)
 app.include_router(analysis.router)
+app.include_router(similarity.router)
+app.include_router(rca.router)
+app.include_router(report.router)
+
+
+@app.on_event("startup")
+async def backfill_embeddings():
+    """
+    On startup, silently generate embeddings for any incidents that don't
+    have one yet (e.g. INC-1004, INC-1005 which were seeded without /analyze).
+    Runs in the background so it doesn't delay server startup.
+    """
+    import asyncio
+
+    async def _run():
+        try:
+            from app.database import supabase_client
+            from app.services.embedding_service import generate_and_store_embedding
+
+            response = (
+                supabase_client.table("incidents")
+                .select("incident_id, embedding")
+                .execute()
+            )
+            rows = response.data or []
+            missing = [r["incident_id"] for r in rows if not r.get("embedding")]
+
+            if missing:
+                print(f"[startup] Backfilling embeddings for: {missing}")
+                for incident_id in missing:
+                    try:
+                        generate_and_store_embedding(incident_id)
+                        print(f"[startup] Embedded {incident_id}")
+                    except Exception as exc:
+                        print(f"[startup] Failed to embed {incident_id}: {exc}")
+            else:
+                print("[startup] All incidents already have embeddings.")
+        except Exception as exc:
+            print(f"[startup] Embedding backfill skipped: {exc}")
+
+    asyncio.create_task(_run())
 
 
 @app.get("/health", tags=["Health"])
