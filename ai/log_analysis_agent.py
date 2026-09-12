@@ -69,7 +69,6 @@ def analyze_incident_logs(logs: str, max_retries: int = 2) -> dict:
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "temperature": 0.3,
             },
         )
         try:

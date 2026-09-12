@@ -27,7 +27,7 @@ interface StatusBadgeProps {
 }
 
 export default function StatusBadge({ status, size = "sm" }: StatusBadgeProps) {
-  const config = statusConfig[status];
+  const config = statusConfig[status] ?? statusConfig["OPEN"];
   const padding = size === "md" ? "px-3 py-1 text-sm" : "px-2.5 py-0.5 text-xs";
   return (
     <span

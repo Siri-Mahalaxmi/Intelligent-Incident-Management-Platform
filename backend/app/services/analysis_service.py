@@ -78,7 +78,16 @@ def run_analysis(incident_id: str) -> AnalysisResult:
     # Step 5: Persist to Supabase
     update_ai_summary(incident_id, result)
 
-    # Step 6: Return typed response
+    # Step 6: Generate and store embedding so similarity search works immediately.
+    # Run after analysis so the embedding text includes the latest context.
+    # A failure here is non-fatal — analysis result is already saved.
+    try:
+        from app.services.embedding_service import generate_and_store_embedding
+        generate_and_store_embedding(incident_id)
+    except Exception:
+        pass  # Don't block the analysis response if embedding fails
+
+    # Step 7: Return typed response
     return AnalysisResult(
         incident_id=incident_id,
         summary=result["summary"],
