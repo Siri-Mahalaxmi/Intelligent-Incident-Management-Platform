@@ -1,6 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
 venv/
+env/
+
+# Environment variables
 .env
 .env.local
-*.env
-__pycache__/
-*.pyc
+
+# Node
+node_modules/
+npm-debug.log*
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

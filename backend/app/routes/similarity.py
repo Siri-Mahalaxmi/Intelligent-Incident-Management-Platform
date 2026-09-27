@@ -1,48 +1,44 @@
 """
-Similarity routes.
+Similarity routes — protected by JWT authentication.
 
-POST /incidents/{incident_id}/embed   — generate & store embedding for one incident
-POST /incidents/{incident_id}/similar — find semantically similar past incidents
-POST /embed-all                        — backfill embeddings for all incidents missing one
+POST /incidents/{incident_id}/embed
+POST /incidents/{incident_id}/similar
+POST /embed-all
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from app.auth import get_current_user
 from app.models.incident import SimilarIncidentsResponse
 from app.services.embedding_service import (
     find_similar_incidents,
     generate_and_store_embedding,
 )
+from app.services.profile_service import UserProfile
 
 router = APIRouter(prefix="/incidents", tags=["Similarity"])
 
 
 @router.post("/{incident_id}/embed", status_code=200)
-def embed_incident(incident_id: str):
-    """
-    Generate and persist a vector embedding for the given incident.
-
-    Call this once per incident before using the /similar endpoint.
-    The /analyze endpoint calls this automatically, so manual calls
-    are only needed when backfilling existing incidents.
-
-    - **incident_id**: human-readable ID, e.g. `INC-1001`
-    """
+def embed_incident(
+    incident_id: str,
+    user: UserProfile = Depends(get_current_user),
+):
+    """Generate and persist a vector embedding for the given incident."""
     generate_and_store_embedding(incident_id)
     return {"incident_id": incident_id, "status": "embedding stored"}
 
 
 @router.post("/embed-all", status_code=200, tags=["Similarity"])
-def embed_all_incidents():
+def embed_all_incidents(user: UserProfile = Depends(get_current_user)):
     """
     Backfill embeddings for every incident that does not have one yet.
-
-    Safe to call multiple times — skips incidents that already have embeddings.
-    Useful after seeding new historical incidents (e.g. INC-1004, INC-1005).
+    central_admin only.
     """
-    from app.database import supabase_client
+    from app.auth import require_central_admin
+    require_central_admin(user)
 
-    # Fetch all incidents that have no embedding
+    from app.database import supabase_client
     response = (
         supabase_client.table("incidents")
         .select("incident_id, embedding")
@@ -52,7 +48,11 @@ def embed_all_incidents():
     rows = response.data or []
     missing = [r["incident_id"] for r in rows if not r.get("embedding")]
 
-    results = {"embedded": [], "failed": [], "already_had_embedding": len(rows) - len(missing)}
+    results = {
+        "embedded": [],
+        "failed": [],
+        "already_had_embedding": len(rows) - len(missing),
+    }
 
     for incident_id in missing:
         try:
@@ -67,38 +67,19 @@ def embed_all_incidents():
 @router.post("/{incident_id}/similar", response_model=SimilarIncidentsResponse)
 def similar_incidents(
     incident_id: str,
-    threshold: float = Query(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Minimum cosine similarity score (0–1). Higher = stricter match.",
-    ),
-    limit: int = Query(
-        default=3,
-        ge=1,
-        le=10,
-        description="Maximum number of similar incidents to return.",
-    ),
+    user: UserProfile = Depends(get_current_user),
+    threshold: float = Query(default=0.5, ge=0.0, le=1.0),
+    limit: int = Query(default=3, ge=1, le=10),
 ):
     """
     Find past incidents semantically similar to the given incident.
-
-    Uses pgvector cosine similarity on pre-computed Gemini embeddings.
-    If the incident has no embedding yet, one is generated on the fly.
-
-    Returns up to `limit` results with similarity >= `threshold`,
-    ordered from most to least similar.
-
-    - **incident_id**: human-readable ID, e.g. `INC-1001`
-    - **threshold**: minimum similarity score (default 0.5)
-    - **limit**: max results to return (default 3, max 10)
+    Org users only see similar incidents within their own organization.
     """
+    org_id = None if user.is_central_admin else user.organization_id
     similar = find_similar_incidents(
         incident_id=incident_id,
         match_threshold=threshold,
         match_count=limit,
+        organization_id=org_id,
     )
-    return SimilarIncidentsResponse(
-        incident_id=incident_id,
-        similar=similar,
-    )
+    return SimilarIncidentsResponse(incident_id=incident_id, similar=similar)

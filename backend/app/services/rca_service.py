@@ -1,14 +1,9 @@
 """
 RCA Service — orchestrates the multi-agent pipeline for root cause analysis.
-
-Flow:
-  1. Fetch the incident from Supabase
-  2. Run similarity search to get top-3 similar past incidents
-  3. Pass logs + similar incidents into the multi-agent pipeline
-  4. Persist the result to the rca_result column
-  5. Return a typed RCAResult
+Now accepts organization_id to enforce org-scoped access.
 """
 
+from typing import Optional
 from fastapi import HTTPException
 
 from app.database import supabase_client
@@ -27,17 +22,15 @@ def _coerce_logs(logs) -> str:
     return str(logs) if logs is not None else ""
 
 
-def run_rca(incident_id: str) -> RCAResult:
+def run_rca(
+    incident_id: str,
+    organization_id: Optional[str] = None,
+) -> RCAResult:
     """
     Run the full 3-agent RCA pipeline for the given incident.
-
-    Raises:
-        404 — incident not found
-        422 — incident has no logs
-        500 — pipeline failure
+    Scopes similarity search to the same organization when organization_id is provided.
     """
-    # Step 1: Fetch incident
-    incident = get_incident_by_id(incident_id)
+    incident = get_incident_by_id(incident_id, organization_id=organization_id)
 
     logs_str = _coerce_logs(incident.logs)
     if not logs_str.strip():
@@ -46,7 +39,6 @@ def run_rca(incident_id: str) -> RCAResult:
             detail=f"Incident '{incident_id}' has no logs to analyse.",
         )
 
-    # Step 2: Retrieve similar past incidents via pgvector
     similar_incidents = []
     try:
         from app.services.embedding_service import find_similar_incidents
@@ -54,6 +46,7 @@ def run_rca(incident_id: str) -> RCAResult:
             incident_id=incident_id,
             match_threshold=0.0,
             match_count=3,
+            organization_id=organization_id,
         )
         similar_incidents = [
             {
@@ -65,10 +58,8 @@ def run_rca(incident_id: str) -> RCAResult:
             for s in similar
         ]
     except Exception:
-        # Non-fatal — pipeline still runs without similar incidents
         similar_incidents = []
 
-    # Step 3: Run the multi-agent pipeline
     try:
         from ai.multi_agent_pipeline import run_rca_pipeline
         result = run_rca_pipeline(
@@ -83,12 +74,10 @@ def run_rca(incident_id: str) -> RCAResult:
             detail=f"RCA pipeline failed: {exc}",
         ) from exc
 
-    # Step 4: Persist to Supabase
     supabase_client.table("incidents").update(
         {"rca_result": result}
     ).eq("incident_id", incident_id).execute()
 
-    # Step 5: Return typed response
     log_data = result.get("log_analysis", {})
     rca_data = result.get("rca", {})
     res_data = result.get("resolution", {})

@@ -1,29 +1,27 @@
 """
-RCA routes.
+RCA routes — protected by JWT authentication.
 
-POST /incidents/{incident_id}/rca — run the full 3-agent RCA pipeline
+POST /incidents/{incident_id}/rca
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.auth import get_current_user
 from app.models.incident import RCAResult
 from app.services.rca_service import run_rca
+from app.services.profile_service import UserProfile
 
 router = APIRouter(prefix="/incidents", tags=["RCA"])
 
 
 @router.post("/{incident_id}/rca", response_model=RCAResult)
-def rca_incident(incident_id: str):
+def rca_incident(
+    incident_id: str,
+    user: UserProfile = Depends(get_current_user),
+):
     """
     Run the multi-agent Root Cause Analysis pipeline on an incident.
-
-    Executes three sequential AI agents:
-    - **Agent 1** (Log Analysis): Extracts error patterns from raw logs
-    - **Agent 2** (RCA): Identifies root cause using logs + similar past incidents
-    - **Agent 3** (Resolution): Recommends immediate and long-term actions
-
-    Results are persisted to the `rca_result` column in Supabase.
-
-    - **incident_id**: human-readable ID, e.g. `INC-1001`
+    Org users can only run RCA for incidents belonging to their organization.
     """
-    return run_rca(incident_id)
+    org_id = None if user.is_central_admin else user.organization_id
+    return run_rca(incident_id, organization_id=org_id)
