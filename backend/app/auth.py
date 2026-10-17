@@ -123,6 +123,7 @@ def _decode_token(token: str) -> dict:
         algorithms=[alg],
         audience="authenticated",
         options={"verify_exp": True},
+        leeway=60,  # allow up to 60s clock skew between server and Supabase
     )
 
     # ── HS256 path ────────────────────────────────────────────────────────

@@ -17,7 +17,6 @@ const API_BASE_URL =
 let _client: SupabaseClient | null = null;
 
 function getClient(): SupabaseClient | null {
-  // Guard: do not create the client server-side or if env vars are missing
   if (typeof window === "undefined") return null;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -56,10 +55,20 @@ export async function apiRequest<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (networkErr) {
+    // Network error — backend is likely not running
+    throw new Error(
+      `Cannot reach the backend at ${API_BASE_URL}. ` +
+      `Make sure the FastAPI server is running: ` +
+      `cd backend && uvicorn app.main:app --reload`
+    );
+  }
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => null);
