@@ -1,15 +1,9 @@
 """
 Report Service — orchestrates the Report Agent call and persists the result.
-
-Flow:
-  1. Fetch the incident (with all JSONB columns) from Supabase
-  2. Validate that ai_summary and rca_result exist (run /analyze and /rca first)
-  3. Pull similar incidents from pgvector for report context
-  4. Call the Report Agent
-  5. Persist report_result to Supabase
-  6. Return a typed ReportResult
+Now accepts organization_id to enforce org-scoped access.
 """
 
+from typing import Optional
 from fastapi import HTTPException
 
 from app.database import supabase_client
@@ -23,25 +17,18 @@ def _coerce_logs(logs) -> str:
     return str(logs) if logs is not None else ""
 
 
-def run_report(incident_id: str) -> ReportResult:
+def run_report(
+    incident_id: str,
+    organization_id: Optional[str] = None,
+) -> ReportResult:
     """
     Generate a structured post-mortem report for the given incident.
-
-    Requires that /analyze and /rca have already been run (ai_summary and
-    rca_result must be populated). If they are missing, returns a 422 error
-    with a clear message so the caller knows what to run first.
-
-    Raises:
-        404 — incident not found
-        422 — ai_summary or rca_result not yet populated
-        500 — Report Agent failure
+    Scopes incident access and similarity search to the same org.
     """
     from ai.report_agent import generate_report
 
-    # Step 1: Fetch the full incident row
-    incident = get_incident_by_id(incident_id)
+    incident = get_incident_by_id(incident_id, organization_id=organization_id)
 
-    # Step 2: Validate prerequisites
     if not incident.ai_summary:
         raise HTTPException(
             status_code=422,
@@ -60,7 +47,6 @@ def run_report(incident_id: str) -> ReportResult:
             ),
         )
 
-    # Step 3: Get similar incidents for report context (non-fatal if it fails)
     similar_incidents = []
     try:
         from app.services.embedding_service import find_similar_incidents
@@ -68,6 +54,7 @@ def run_report(incident_id: str) -> ReportResult:
             incident_id=incident_id,
             match_threshold=0.0,
             match_count=3,
+            organization_id=organization_id,
         )
         similar_incidents = [
             {
@@ -81,7 +68,6 @@ def run_report(incident_id: str) -> ReportResult:
     except Exception:
         similar_incidents = []
 
-    # Step 4: Build structured input dicts for the Report Agent
     incident_dict = {
         "title": incident.title,
         "service": incident.service,
@@ -98,7 +84,6 @@ def run_report(incident_id: str) -> ReportResult:
     rca_data = rca_result.get("rca", {}) if isinstance(rca_result, dict) else {}
     resolution_data = rca_result.get("resolution", {}) if isinstance(rca_result, dict) else {}
 
-    # Step 5: Run the Report Agent
     try:
         report = generate_report(
             incident=incident_dict,
@@ -113,10 +98,8 @@ def run_report(incident_id: str) -> ReportResult:
             detail=f"Report Agent failed: {exc}",
         ) from exc
 
-    # Step 6: Persist to Supabase
     update_report_result(incident_id, report)
 
-    # Step 7: Return typed response
     return ReportResult(
         incident_id=incident_id,
         executive_summary=report.get("executive_summary", ""),

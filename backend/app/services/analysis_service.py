@@ -1,13 +1,9 @@
 """
 Analysis service — orchestrates the Log Analysis Agent call and persists the result.
-
-The ai/ package is owned by another team member and must not be modified.
-We import analyze_incident_logs inside run_analysis() rather than at module
-level so the import only happens at call time, after main.py has already
-loaded .env into os.environ. This avoids the module-level side effect in
-log_analysis_agent.py (genai.Client construction) firing too early.
+Now accepts organization_id to enforce org-scoped access when fetching the incident.
 """
 
+from typing import Optional
 from fastapi import HTTPException
 
 from ai.log_analysis_agent import normalize_analysis_result
@@ -16,38 +12,27 @@ from app.services.incident_service import get_incident_by_id, update_ai_summary
 
 
 def _coerce_logs(logs) -> str:
-    """
-    Ensure logs are a plain string regardless of how they are stored in Supabase.
-    - str  → returned as-is
-    - list → joined with newlines (e.g. ["line1", "line2"] → "line1\nline2")
-    - anything else → str() fallback
-    """
     if isinstance(logs, list):
         return "\n".join(str(line) for line in logs)
     return str(logs) if logs is not None else ""
 
 
-def run_analysis(incident_id: str) -> AnalysisResult:
+def run_analysis(
+    incident_id: str,
+    organization_id: Optional[str] = None,
+) -> AnalysisResult:
     """
-    1. Fetch the incident and its raw logs from Supabase.
-    2. Coerce logs to a plain string (handles both str and list storage).
+    1. Fetch the incident (org-scoped if organization_id provided).
+    2. Coerce logs to a plain string.
     3. Pass the logs to the Log Analysis Agent.
     4. Persist the result back to ai_summary.
-    5. Return a structured AnalysisResult.
-
-    Raises:
-        404  — if the incident does not exist.
-        422  — if the incident has no logs to analyse.
-        500  — if the agent raises or returns an unexpected shape.
+    5. Generate and store an embedding (non-fatal).
+    6. Return a structured AnalysisResult.
     """
-    # Deferred import: .env is guaranteed loaded by main.py before any request
-    # reaches here, so os.environ["GEMINI_API_KEY"] is set when this line runs.
     from ai.log_analysis_agent import analyze_incident_logs
 
-    # Step 1: Fetch incident (raises 404 if not found)
-    incident = get_incident_by_id(incident_id)
+    incident = get_incident_by_id(incident_id, organization_id=organization_id)
 
-    # Step 2: Coerce logs to string
     logs_str = _coerce_logs(incident.logs)
     if not logs_str.strip():
         raise HTTPException(
@@ -55,7 +40,6 @@ def run_analysis(incident_id: str) -> AnalysisResult:
             detail=f"Incident '{incident_id}' has no logs to analyse.",
         )
 
-    # Step 3: Run the Log Analysis Agent
     try:
         result: dict = analyze_incident_logs(logs_str)
     except Exception as exc:
@@ -64,7 +48,6 @@ def run_analysis(incident_id: str) -> AnalysisResult:
             detail=f"Log Analysis Agent failed: {exc}",
         ) from exc
 
-    # Step 4: Normalize and validate the output shape
     result = normalize_analysis_result(result)
 
     required_keys = {"summary", "probable_severity", "key_error_patterns", "confidence"}
@@ -75,19 +58,14 @@ def run_analysis(incident_id: str) -> AnalysisResult:
             detail=f"Log Analysis Agent returned incomplete result. Missing keys: {missing}",
         )
 
-    # Step 5: Persist to Supabase
     update_ai_summary(incident_id, result)
 
-    # Step 6: Generate and store embedding so similarity search works immediately.
-    # Run after analysis so the embedding text includes the latest context.
-    # A failure here is non-fatal — analysis result is already saved.
     try:
         from app.services.embedding_service import generate_and_store_embedding
         generate_and_store_embedding(incident_id)
     except Exception:
-        pass  # Don't block the analysis response if embedding fails
+        pass
 
-    # Step 7: Return typed response
     return AnalysisResult(
         incident_id=incident_id,
         summary=result["summary"],

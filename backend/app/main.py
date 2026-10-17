@@ -1,27 +1,22 @@
 # ---------------------------------------------------------------------------
 # Load .env FIRST — before any other import.
-# ai/log_analysis_agent.py executes os.environ["GEMINI_API_KEY"] at module
-# level when it is first imported, so the env must be populated before any
-# import chain reaches that module.
 # ---------------------------------------------------------------------------
 import os
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-# ---------------------------------------------------------------------------
-# All application imports come after the env is loaded.
-# ---------------------------------------------------------------------------
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes import analysis, incidents, similarity, rca, report
+from app.routes import admin, profile
 
 app = FastAPI(
     title="Intelligent Incident Management Platform",
-    description="Backend API for managing and AI-analysing operational incidents.",
-    version="1.0.0",
+    description="Multi-tenant backend API for managing and AI-analysing operational incidents.",
+    version="2.0.0",
 )
 
 
@@ -30,33 +25,53 @@ def root():
     return RedirectResponse(url="/docs")
 
 
+# ---------------------------------------------------------------------------
+# CORS — allow frontend origins
+# ---------------------------------------------------------------------------
+_allowed_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8080",
+]
+# Add production origin from env if set
+_prod_origin = os.environ.get("FRONTEND_ORIGIN")
+if _prod_origin:
+    _allowed_origins.append(_prod_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8080",
-    ],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
+# ---------------------------------------------------------------------------
+# Routers
+# ---------------------------------------------------------------------------
+app.include_router(profile.router)
 app.include_router(incidents.router)
 app.include_router(analysis.router)
 app.include_router(similarity.router)
 app.include_router(rca.router)
 app.include_router(report.router)
+app.include_router(admin.router)
 
 
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+@app.get("/health", tags=["Health"])
+def health_check():
+    """Liveness probe — returns 200 when the server is up."""
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Startup: backfill embeddings for any incidents missing one
+# ---------------------------------------------------------------------------
 @app.on_event("startup")
 async def backfill_embeddings():
-    """
-    On startup, silently generate embeddings for any incidents that don't
-    have one yet (e.g. INC-1004, INC-1005 which were seeded without /analyze).
-    Runs in the background so it doesn't delay server startup.
-    """
     import asyncio
 
     async def _run():
@@ -86,9 +101,3 @@ async def backfill_embeddings():
             print(f"[startup] Embedding backfill skipped: {exc}")
 
     asyncio.create_task(_run())
-
-
-@app.get("/health", tags=["Health"])
-def health_check():
-    """Liveness probe — returns 200 when the server is up."""
-    return {"status": "ok"}
